@@ -1,0 +1,3 @@
+dnspython3
+requests
+torrent_parser
