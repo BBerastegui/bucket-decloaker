@@ -7,6 +7,7 @@ import argparse
 import dns.resolver
 import re
 import json
+import tldextract
 
 import requests
 # Leave me alone, Python, I know what I'm doing:
@@ -27,18 +28,22 @@ class Bucket:
 def main(args):
     bucket = Bucket()
 
+    # Extract domain from url
+    domain = ".".join(tldextract.extract(args.domain))
+
     # Run generic checks
-    cname_check(args.domain, bucket)
-    url_check(args.domain, bucket)
-    url_char_check(args.domain, bucket)
+    cname_check(domain, bucket)
+    url_check(domain, bucket)
+    url_char_check(domain, bucket)
+    permission_errors_check(domain, bucket)
 
     # Run specific checks depending on the provider
     if bucket.provider is "aws":
         # Specific AWS checks
-        torrent_check(args.domain, bucket)
+        torrent_check(domain, bucket)
     elif bucket.provider is "gcp":
         # Specific GCP checks
-        signature_check(args.domain, bucket)
+        signature_check(domain, bucket)
     elif bucket.provider is "azure":
         # Specific Azure checks
         print("[i] I need Azure checks...")
@@ -120,6 +125,26 @@ def url_char_check(domain, bucket):
         print('[i] No S3 bucket found with url %C0 trick.')
         return
 
+
+# GCP
+# Look for iam.gserviceaccount.com in the response
+# TODO - Check for permission errors in AWS in the same case
+def permission_errors_check(domain, bucket):
+    try:
+        r = requests.get('https://{}/'.format(domain),
+                         verify=False)
+        # Check if the domain is returning a permission error for GCP buckets
+        #permissions_error_string = 'iam.gserviceaccount.com'
+        bucket_pattern = re.compile("access to (.*).</Details></Error>")
+        response_content = r.content.decode('utf-8')
+        if bucket_pattern.search(r.content.decode('utf-8')) is not None:
+            print('[!] GCP bucket found in the response (permissions error): {}'.format(
+                bucket_pattern.search(response_content).group(1)))
+            bucket.provider = "gcp"
+            bucket.bucket_name = bucket_pattern.search(response_content).group(1)
+    except Exception as e:
+        print('[i] No GCP bucket found in the response (errors or such).')
+        return
 
 # GCP
 def signature_check(domain, bucket):
