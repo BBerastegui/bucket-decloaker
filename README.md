@@ -65,7 +65,9 @@ def yourcustom_check(domain, bucket):
 - [x] Create a simple script that will try to guess the bucket from a domain name
 - [ ] Implement GCP buckets checks
 - [ ] Implement Azure buckets checks
+- [ ] Add the method used to fingerprint the bucket in the results
 - [ ] Implement @fransrosen's script checks (link above)
+- [ ] Timeout for functions
 - [ ] Add more files to be checked in the "torrent" trick (now only checking for `index.html?torrent`)
 - [ ] Force "in code" the list of providers that can be set ["aws","gcp","azure"]
 
