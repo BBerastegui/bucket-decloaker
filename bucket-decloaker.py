@@ -57,6 +57,7 @@ def main(args):
     if (bucket.provider in ["aws", None]) or (not bucket.certain):
         # Specific AWS checks
         print("[aws] Running aws specific checks...")
+        name_in_listing(domain, bucket)
         torrent_check(domain, bucket)
     if (bucket.provider in ["gcp", None]) or (not bucket.certain):
         # Specific GCP checks
@@ -161,11 +162,27 @@ def url_char_check(domain, bucket):
         r = requests.get('https://{}/1%C0'.format(domain), verify=False)
         # Check if the domain is directly pointing to an s3 bucket
         bucket_pattern = re.compile("<URI>/(.*)/.*</URI>")
-        if bucket_pattern.search(r.content) is not None:
-            bucket.bucket_name = bucket_pattern.search(r.content).group(1)
+        response_content = r.content.decode('utf-8')
+        if bucket_pattern.search(response_content) is not None:
+            bucket.bucket_name = bucket_pattern.search(response_content).group(1)
             print('[!] S3 bucket detected (url %C0 character check): {}'.format(bucket.bucket_name))
     except Exception as e:
         print('[i] No S3 bucket found with url %C0 trick.')
+        pass
+
+
+# AWS
+def name_in_listing(domain, bucket):
+    try:
+        r = requests.get('https://{}/'.format(domain), verify=False)
+        # Check if the domain is directly pointing to an s3 bucket
+        bucket_pattern = re.compile("<Name>(.*)</Name>")
+        response_content = r.content.decode('utf-8')
+        if bucket_pattern.search(response_content) is not None:
+            bucket.bucket_name = bucket_pattern.search(response_content).group(1)
+            print('[!] S3 bucket name detected (listing enabled, name in response): {}'.format(bucket.bucket_name))
+    except Exception as e:
+        print('[i] No S3 bucket found looking for name in listing.')
         pass
 
 
@@ -201,7 +218,7 @@ def permission_errors_check(domain, bucket):
         if any(error_string in r.content.decode('utf-8') for error_string in permissions_error_strings):
             bucket_pattern = re.compile("access to (.*).</Details></Error>")
             response_content = r.content.decode('utf-8')
-            if bucket_pattern.search(r.content.decode('utf-8')) is not None:
+            if bucket_pattern.search(response_content) is not None:
                 bucket.provider = "gcp"
                 bucket.bucket_name = bucket_pattern.search(response_content).group(1)
                 print('[!] GCP bucket found in the response (permissions error): {}'.format(bucket.bucket_name))
@@ -219,7 +236,7 @@ def signature_check(domain, bucket):
         # Check if the domain is directly pointing to an s3 bucket
         bucket_pattern = re.compile("/(.*)/1</StringToSign>")
         response_content = r.content.decode('utf-8')
-        if bucket_pattern.search(r.content.decode('utf-8')) is not None:
+        if bucket_pattern.search(response_content) is not None:
             bucket.bucket_name = bucket_pattern.search(response_content).group(1)
             print('[!] GCP bucket detected with signature error: {}'.format(bucket.bucket_name))
         bucket.certain = True
