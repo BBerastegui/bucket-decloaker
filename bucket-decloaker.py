@@ -49,6 +49,7 @@ def main(args):
     # Run generic checks
     print("[i] Running generic and/or multiple vendor checks to find out provider...")
     cname_check(domain, bucket)
+    http_headers(domain, bucket)
     url_check(domain, bucket)
     url_char_check(domain, bucket)
 
@@ -57,6 +58,7 @@ def main(args):
     if (bucket.provider in ["aws", None]) or (not bucket.certain):
         # Specific AWS checks
         print("[aws] Running aws specific checks...")
+        soap_check(domain, bucket)
         name_in_listing(domain, bucket)
         torrent_check(domain, bucket)
     if (bucket.provider in ["gcp", None]) or (not bucket.certain):
@@ -129,6 +131,21 @@ def cname_check(domain, bucket):
         pass
 
 
+# AWS, GCP, Azure (TODO)
+def http_headers(domain, bucket):
+    # If 'Server: AmazonS3' in response headers, then AWS
+    aws_s3_server_header = 'AmazonS3'
+    try:
+        r = requests.get('https://{}/'.format(domain), verify=False)
+        server_header = r.headers.get('Server')
+        if aws_s3_server_header in server_header:
+            bucket.provider = "aws"
+
+    except Exception as e:
+        print('[i] No known clues found in HTTP headers.')
+        pass
+
+
 # AWS, GCP
 def url_check(domain, bucket):
     try:
@@ -168,6 +185,23 @@ def url_char_check(domain, bucket):
             print('[!] S3 bucket detected (url %C0 character check): {}'.format(bucket.bucket_name))
     except Exception as e:
         print('[i] No S3 bucket found with url %C0 trick.')
+        pass
+
+
+# AWS
+def soap_check(domain, bucket):
+    try:
+        # String to find in response if /soap is found
+        is_soap_bucket = b'>Missing SOAPAction header<'
+
+        # Perform request using POST method to /soap
+        r = requests.post('https://{}/soap'.format(domain), verify=False)
+        print(r.text)
+        if is_soap_bucket in r.content:
+            bucket.provider = "aws"
+            print('[i] S3 bucket detected by querying /soap')
+    except Exception as e:
+        print('[i] Error when checking for /soap endpoint.')
         pass
 
 
