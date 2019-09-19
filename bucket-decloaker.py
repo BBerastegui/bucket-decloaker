@@ -34,8 +34,8 @@ class Bucket:
     def __init__(self):
         self.provider = None
         self.bucket_name = None
-        self.cloudfront = None
-        self.cloudfront_name = None
+        self.load_balancer = None
+        self.load_balancer_name = None
         # The attribute certain can be True/False if the check is not reliable
         self.certain = True
 
@@ -69,7 +69,8 @@ def main(args):
     if (bucket.provider in ["azure", None]) or (not bucket.certain):
         # Specific Azure checks
         print("[azure] Running azure specific checks...")
-        print("[i] I need Azure checks...")
+        append_comp_parameter(domain, bucket)
+        #print("[i] I need Azure checks...")
 
     # Now print the results nicely
     print_results(bucket)
@@ -106,24 +107,40 @@ def cname_check(domain, bucket):
         for rdata in answers:
             # Remove trailing dot
             rdata.target = str(rdata.target).rstrip('.')
-            # Check if the domain is server from Cloudfront
+            # AWS
+            # Check if the domain is served from Cloudfront
             if "cloudfront.net" in str(rdata.target):
                 # In this case, we know that the provider is AWS
                 bucket.provider = "aws"
-                bucket.cloudfront = True
-                bucket.cloudfront_name = str(rdata.target)
+                bucket.load_balancer = True
+                bucket.load_balancer_name = str(rdata.target)
                 return
             # Check if the domain is directly pointing to an s3 bucket
             s3_pattern = re.compile(".*s3.*\.amazonaws\.com")
             if s3_pattern.search(str(rdata.target)):
                 bucket.provider = "aws"
-                bucket.cloudfront = False
-                bucket.bucket_name = str(rdata.target)
+                bucket.load_balancer = False
+                bucket.load_balancer_name = str(rdata.target)
                 return
+            # GCP
             # Check if the domain is directly pointing to a GCP bucket
             gcp_pattern = re.compile(".*\.storage\.googleapis\.com")
             if gcp_pattern.search(str(rdata.target)):
                 bucket.provider = "gcp"
+                bucket.bucket_name = str(domain)
+                return
+            # AZURE
+            # Check if the domain is served from Cloudfront
+            if "azureedge.net" in str(rdata.target):
+                # In this case, we know that the provider is AWS
+                bucket.provider = "azure"
+                bucket.load_balancer = True
+                bucket.load_balancer_name = str(rdata.target)
+                return
+            # Check if the domain is pointing to an Azure load balancer storage
+            azure_pattern = re.compile(".*\.(web|blob)\.core\.windows\.net")
+            if azure_pattern.search(str(rdata.target)):
+                bucket.provider = "azure"
                 bucket.bucket_name = str(domain)
                 return
     except Exception as e:
@@ -278,10 +295,25 @@ def signature_check(domain, bucket):
         print('[i] No GCP bucket found with the signature "trick".')
         pass
 
+# AZURE
+def append_comp_parameter(domain, bucket):
+    try:
+        r = requests.get('http://{}/nonexistingasset000/?comp=list'.format(domain), verify=False)
+        # Check if the response contains the appropriate error
+        blob_pattern = re.compile("<UriPath>https?:\/\/(.*)\/nonexistingasset000\/\?comp=list<\/UriPath>")
+        response_content = r.content.decode('utf-8')
+        if blob_pattern.search(response_content) is not None:
+            bucket.bucket_name = blob_pattern.search(response_content).group(1)
+            print('[!] Azure blob storage detected by appending comp=list to a non existing resource: {}'.format(bucket.bucket_name))
+        bucket.certain = True
+    except Exception as e:
+        print('[i] No Azure blob storage found by appending comp=list to a non existing resource.')
+        pass
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Decloak a domain containing an S3 bucket.')
-    parser.add_argument('-d', '--domain', required=True, help='The domain containing a S3 bucket to be disclosed.')
+    parser = argparse.ArgumentParser(description='Decloak a domain potentially using a bucket or blob storage.')
+    parser.add_argument('-d', '--domain', required=True, help='The domain containing a bucket or blob storage to be "discovered".')
     parser.add_argument('-o', '--output', required=False, help='Output file to write the results to.')
 
     args = parser.parse_args()
