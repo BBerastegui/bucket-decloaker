@@ -195,7 +195,7 @@ def url_char_check(domain, bucket):
     try:
         r = requests.get('https://{}/1%C0'.format(domain), verify=False)
         # Check if the domain is directly pointing to an s3 bucket
-        bucket_pattern = re.compile("<URI>/(.*)/.*</URI>")
+        bucket_pattern = re.compile("<URI>\/(.*?)\/.*<\/URI>")
         response_content = r.content.decode('utf-8')
         if bucket_pattern.search(response_content) is not None:
             bucket.bucket_name = bucket_pattern.search(response_content).group(1)
@@ -213,7 +213,6 @@ def soap_check(domain, bucket):
 
         # Perform request using POST method to /soap
         r = requests.post('https://{}/soap'.format(domain), verify=False)
-        print(r.text)
         if is_soap_bucket in r.content:
             bucket.provider = "aws"
             print('[i] S3 bucket detected by querying /soap')
