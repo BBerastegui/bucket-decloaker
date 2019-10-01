@@ -9,6 +9,9 @@ import dns.resolver
 import re
 import json
 import tldextract
+from datetime import datetime, timezone
+
+unique_filename = "bucket_decloaker_01100010"
 
 import requests
 # Leave me alone, Python, I know what I'm doing:
@@ -61,6 +64,11 @@ def main(args):
         soap_check(domain, bucket)
         name_in_listing(domain, bucket)
         torrent_check(domain, bucket)
+        # Now checks that require the --aws-key parameter to be set
+        if args.aws_key != None:
+            signing_error(domain, bucket, args.aws_key)
+        else:
+            print(bcolors.WARNING + "[i] A valid AWS key is requred to perform further checks." + bcolors.ENDC)
     if (bucket.provider in ["gcp", None]) or (not bucket.certain):
         # Specific GCP checks
         print("[gcp] Running gcp specific checks...")
@@ -88,9 +96,9 @@ def print_results(bucket):
         print(bcolors.WARNING + '[?] Provider not fingerprinted.' + bcolors.ENDC)
 
     if bucket.bucket_name is not None:
-        print(bcolors.OKGREEN + '[{}] Bucket detected: {}'.format(bucket.provider, bucket.bucket_name) + bcolors.ENDC)
+        print(bcolors.OKGREEN + '[{}] Bucket/blob storage detected: {}'.format(bucket.provider, bucket.bucket_name) + bcolors.ENDC)
     else:
-        print(bcolors.WARNING + '[?] Bucket name not found.' + bcolors.ENDC)
+        print(bcolors.WARNING + '[?] Bucket/blob storage name not found.' + bcolors.ENDC)
 
     if bucket.certain is False:
         print(bcolors.FAIL + '[?] The results are not certain (obtained using methods that do not guarantee that the '
@@ -210,7 +218,6 @@ def soap_check(domain, bucket):
     try:
         # String to find in response if /soap is found
         is_soap_bucket = b'>Missing SOAPAction header<'
-
         # Perform request using POST method to /soap
         r = requests.post('https://{}/soap'.format(domain), verify=False)
         if is_soap_bucket in r.content:
@@ -220,6 +227,25 @@ def soap_check(domain, bucket):
         print('[i] Error when checking for /soap endpoint.')
         pass
 
+# AWS - Requires valid key (AKIA...)
+def signing_error(domain, bucket, aws_key):
+    try:
+        bucket_pattern = re.compile("/(.*?)/.*</StringToSign>")
+        # Get current time and date for the "Date" header
+        headers = { 
+            "Authorization": "AWS {}:x".format(aws_key),
+            "Date": datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+        }
+        r = requests.get('https://{}/{}?112233'.format(domain, unique_filename),
+        headers=headers, verify=False)
+        # Check if there is a signature error in the response
+        response_content = r.content.decode('utf-8')
+        if bucket_pattern.search(response_content) is not None:
+            bucket.bucket_name = bucket_pattern.search(response_content).group(1)
+            print('[!] S3 bucket name detected triggering signature error: {}'.format(bucket.bucket_name))
+    except Exception as e:
+        print('[i] Error when triggering signing error with a valid key.')
+        pass
 
 # AWS
 def name_in_listing(domain, bucket):
@@ -242,7 +268,8 @@ def torrent_check(domain, bucket):
         try:
             import urllib.request
             tmp_file_name, headers = urllib.request.urlretrieve(
-                'http://{}.s3.amazonaws.com/index.html?torrent'.format(bucket.bucket_name))
+                'http://{}.s3.amazonaws.com/index.html?torrent'.format(bucket.bucket_name)
+            )
             import torrent_parser as tp
             torrent_data = tp.parse_torrent_file(tmp_file_name)
             bucket.provider = "aws"
@@ -297,9 +324,9 @@ def signature_check(domain, bucket):
 # AZURE
 def append_comp_parameter(domain, bucket):
     try:
-        r = requests.get('http://{}/nonexistingasset000/?comp=list'.format(domain), verify=False)
+        r = requests.get('http://{}/{}/?comp=list'.format(domain, unique_filename), verify=False)
         # Check if the response contains the appropriate error
-        blob_pattern = re.compile("<UriPath>https?:\/\/(.*)\/nonexistingasset000\/\?comp=list<\/UriPath>")
+        blob_pattern = re.compile("<UriPath>https?:\/\/(.*)\/{}\/\?comp=list<\/UriPath>".format(unique_filename))
         response_content = r.content.decode('utf-8')
         if blob_pattern.search(response_content) is not None:
             bucket.bucket_name = blob_pattern.search(response_content).group(1)
@@ -314,6 +341,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Decloak a domain potentially using a bucket or blob storage.')
     parser.add_argument('-d', '--domain', required=True, help='The domain containing a bucket or blob storage to be "discovered".')
     parser.add_argument('-o', '--output', required=False, help='Output file to write the results to.')
+    parser.add_argument('--aws-key', required=False, help='Pass a valid AWS key (AKIA...) to perform some specific checks that require a valid key.')
 
     args = parser.parse_args()
 
