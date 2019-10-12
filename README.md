@@ -38,8 +38,10 @@ class Bucket:
     def __init__(self):
         self.provider = None
         self.bucket_name = None
-        self.cloudfront = None
-        self.cloudfront_name = None
+        self.load_balancer = None
+        self.load_balancer_name = None
+        # The attribute certain can be True/False if the check is not reliable
+        self.certain = True
 ```
 
 The checks implemented will be run by passing the domain and an object of the class Bucket:
