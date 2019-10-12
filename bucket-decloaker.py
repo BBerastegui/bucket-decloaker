@@ -79,7 +79,7 @@ def main(args):
         # Specific Azure checks
         print("[azure] Running azure specific checks...")
         append_comp_parameter(domain, bucket)
-        #print("[i] I need Azure checks...")
+        print("[i] I need more Azure checks...")
 
     # Now print the results nicely
     print_results(bucket)
@@ -185,7 +185,7 @@ def url_check(domain, bucket):
             bucket.provider = "aws"
             bucket.bucket_name = domain
             bucket.certain = False
-            print('[!] S3 bucket detected (url API check): {}'.format(bucket.bucket_name))
+            print('[!] S3 bucket detected (bucket direct check): {}'.format(bucket.bucket_name))
 
         # Check if the bucket exists in the GCP Storage API
         gcp_url = 'https://storage.googleapis.com/{}'.format(domain)
@@ -219,8 +219,9 @@ def unicode_error(domain, bucket):
     try:
         r = requests.get('https://{}/åäö'.format(domain), verify=False)
         response_content = r.content.decode('utf-8')
-        print("[/!\] This \"unicode_error\" function needs testing. Please contact me @BBerastegui if you see the bucket name below.")
+        print(bcolors.WARNING + "[\/] This \"unicode_error\" function needs testing. Please contact me @BBerastegui if you see the bucket name in the response below." + bcolors.ENDC)
         print(response_content)
+        print(bcolors.WARNING + "[/\] This \"unicode_error\" function needs testing. Please contact me @BBerastegui if you see the bucket name in the response above." + bcolors.ENDC)
     except Exception as e:
         print('[i] No S3 bucket found with unicode characters trick.')
         pass
@@ -302,7 +303,7 @@ def permission_errors_check(domain, bucket):
         r = requests.get('https://{}/'.format(domain),
                          verify=False)
         # Check if the domain is returning a permission error for GCP buckets
-        # The existence of this string in the response, means that it's a GCP bucket
+        # The existence of this string in the response means that it's a GCP bucket
         permissions_error_strings = ['.iam.gserviceaccount.com does not have ',
                                      'caller does not have storage.objects.list ']
         if any(error_string in r.content.decode('utf-8') for error_string in permissions_error_strings):
@@ -311,10 +312,10 @@ def permission_errors_check(domain, bucket):
             if bucket_pattern.search(response_content) is not None:
                 bucket.provider = "gcp"
                 bucket.bucket_name = bucket_pattern.search(response_content).group(1)
+                bucket.certain = True
                 print('[!] GCP bucket found in the response (permissions error): {}'.format(bucket.bucket_name))
-        bucket.certain = True
     except Exception as e:
-        print('[i] No GCP bucket found in the response (errors or such).')
+        print('[i] Error when looking for GCP bucket in the response errors.')
         pass
 
 
@@ -328,8 +329,8 @@ def signature_check(domain, bucket):
         response_content = r.content.decode('utf-8')
         if bucket_pattern.search(response_content) is not None:
             bucket.bucket_name = bucket_pattern.search(response_content).group(1)
+            bucket.certain = True
             print('[!] GCP bucket detected with signature error: {}'.format(bucket.bucket_name))
-        bucket.certain = True
     except Exception as e:
         print('[i] No GCP bucket found with the signature "trick".')
         pass
@@ -343,8 +344,8 @@ def append_comp_parameter(domain, bucket):
         response_content = r.content.decode('utf-8')
         if blob_pattern.search(response_content) is not None:
             bucket.bucket_name = blob_pattern.search(response_content).group(1)
+            bucket.certain = True
             print('[!] Azure blob storage detected by appending comp=list to a non existing resource: {}'.format(bucket.bucket_name))
-        bucket.certain = True
     except Exception as e:
         print('[i] No Azure blob storage found by appending comp=list to a non existing resource.')
         pass
