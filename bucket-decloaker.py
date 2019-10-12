@@ -64,6 +64,7 @@ def main(args):
         soap_check(domain, bucket)
         name_in_listing(domain, bucket)
         torrent_check(domain, bucket)
+        unicode_error(domain, bucket)
         # Now checks that require the --aws-key parameter to be set
         if args.aws_key != None:
             signing_error(domain, bucket, args.aws_key)
@@ -212,15 +213,27 @@ def url_char_check(domain, bucket):
         print('[i] No S3 bucket found with url %C0 trick.')
         pass
 
+# AWS
+# TODO - Test this function on a bucket
+def unicode_error(domain, bucket):
+    try:
+        r = requests.get('https://{}/åäö'.format(domain), verify=False)
+        response_content = r.content.decode('utf-8')
+        print("[/!\] This \"unicode_error\" function needs testing. Please contact me @BBerastegui if you see the bucket name below.")
+        print(response_content)
+    except Exception as e:
+        print('[i] No S3 bucket found with unicode characters trick.')
+        pass
 
 # AWS
 def soap_check(domain, bucket):
     try:
         # String to find in response if /soap is found
-        is_soap_bucket = b'>Missing SOAPAction header<'
+        is_soap_bucket = '>Missing SOAPAction header<'
         # Perform request using POST method to /soap
         r = requests.post('https://{}/soap'.format(domain), verify=False)
-        if is_soap_bucket in r.content:
+        response_content = r.content.decode('utf-8')
+        if is_soap_bucket in response_content:
             bucket.provider = "aws"
             print('[i] S3 bucket detected by querying /soap')
     except Exception as e:
